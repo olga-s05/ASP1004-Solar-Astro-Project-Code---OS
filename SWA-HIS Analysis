@@ -109,4 +109,6 @@ ax[3].set_yscale("log")
 ax[3].set_ylabel(r"$O^{7+} / O^{6+}$")
 ax[3].axvline(event_time, linestyle = '--', color = 'red')
 
+plt.savefig("HIS_time_analysis_{0}.png".format(date))
+
 #Steps are repeated for 6th of September with input file and event time variable being changed to " datetime.datetime(2022, 9, 6, 10, 00) " and " datetime.datetime(2022, 9, 6, 15, 00) "
