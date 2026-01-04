@@ -6,5 +6,9 @@ import matplotlib.dates as mdates
 from matplotlib.ticker import MaxNLocator
 import datetime
 
+#edit date - using 20220905, ...06 and ...07 for the 3 days
 date = '20220905'
-cdf_file = cdflib.CDF(f'C:\\Users\\slawi\\Desktop\\Astro\\Solar\\solo_L3_swa-his-comp-10min_20220905_V03.cdf')
+#individual downloaded files from the solar orbiter archive are put in below
+cdf_file = cdflib.CDF([file location]\\solo_L3_swa-his-comp-10min_20220905_V03.cdf')
+
+
