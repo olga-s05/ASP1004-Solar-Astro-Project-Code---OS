@@ -1,0 +1,65 @@
+import numpy as np
+import cdflib
+import os
+import pandas as pd
+import warnings
+from matplotlib import pyplot as plt
+from solo_epd_loader import epd_load
+import datetime
+# omit Pandas' PerformanceWarning
+warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+#Insert data file
+cdf = cdflib.CDF(f[file location]\\solo_L3_epd-ept-1min_20220906_V03.cdf')
+#--------------------------
+#Load in data
+info = cdf.cdf_info()
+for attr in dir(info):
+    if not attr.startswith("_"):
+        value = getattr(info, attr)
+        print(f"{attr}: {value}\n")
+#--------------------------
+# define some optional plotting settings
+color = {'sun': 'crimson', 'asun': 'orange', 'north': 'darkslateblue', 'south': 'c'}
+#--------------------------
+from cdflib import cdfepoch
+epoch_raw = cdf.varget("EPOCH")
+epoch = cdfepoch.to_datetime(epoch_raw)
+#--------------------------
+# set variables
+flux_A = cdf.varget("Electron_Corrected_Flux_A")
+flux_D = cdf.varget("Electron_Corrected_Flux_D")
+flux_N = cdf.varget("Electron_Corrected_Flux_N")
+flux_S = cdf.varget("Electron_Corrected_Flux_S")
+energy_cols = [f"E{ch}" for ch in range(flux_A.shape[1])]
+df_electrons_D = pd.DataFrame(flux_D, index=epoch, columns=energy_cols)
+df_electrons_A = pd.DataFrame(flux_A, index=epoch, columns=energy_cols)
+df_electrons_N = pd.DataFrame(flux_N, index=epoch, columns=energy_cols)
+df_electrons_S = pd.DataFrame(flux_S, index=epoch, columns=energy_cols)
+#--------------------------
+# Plotting figure
+channel = 6 
+start_date = datetime.datetime(2000, 1, 1, 12)
+#event_time = datetime.datetime(2022, 9, 6, 10, 00) # Select event time (16:30 on Sept. 5th, 10:00 on Sept 6th and 15:00 on Sept 6th
+#event_time2 = datetime.datetime(2022, 9, 6, 15, 00) # Optional (when doing Sept 6th)
+#--------------------------
+E = cdf.varget("Electron_Energy")
+dE_minus = cdf.varget("Electron_Energy_Delta_Minus")
+dE_plus  = cdf.varget("Electron_Energy_Delta_Plus")
+#--------------------------
+E_low  = E[channel] - dE_minus[channel]
+E_high = E[channel] + dE_plus[channel]
+#--------------------------
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.set_yscale("log")
+#--------------------------
+df_electrons_D[f"E{channel}"].plot(ax=ax, label='sun',   color=color['sun'],   drawstyle="steps-mid")
+df_electrons_A[f"E{channel}"].plot(ax=ax, label='asun',  color=color['asun'],  drawstyle="steps-mid")
+df_electrons_N[f"E{channel}"].plot(ax=ax, label='north', color=color['north'], drawstyle="steps-mid")
+df_electrons_S[f"E{channel}"].plot(ax=ax, label='south', color=color['south'], drawstyle="steps-mid")
+#--------------------------
+#plt.axvline(event_time, linestyle='--', color = 'black', label = "10:00") # To show event times
+#plt.axvline(event_time2, linestyle='--', color = 'black', label = "15:00") # To show event times
+ax.set_ylabel(r"Electron flux (cm$^{-2}$ sr$^{-1}$ s$^{-1}$ MeV$^{-1}$)")
+ax.set_title(f"SolO/EPD EPT electrons ({1000*E_low:.2f}–{1000*E_high:.2f} keV)")
+ax.legend()
+# voila
