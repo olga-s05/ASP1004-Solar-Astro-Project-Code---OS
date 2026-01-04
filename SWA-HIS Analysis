@@ -25,9 +25,9 @@ time = [
     start_date + datetime.timedelta(microseconds=time / 1e3)
     for time in cdf_file.varget("EPOCH")
 ]
-# Create plotting figure and axes
+# Create 3 plotting figure and axes
 fig, ax = plt.subplots(
-    4, 1, figsize=(16, 12), sharex=True, constrained_layout=True
+    3, 1, figsize=(16, 12), sharex=True, constrained_layout=True
 )
 fig.suptitle(
     "HIS Time Analysis Dashboard", color="red", size="x-large", weight="bold"
@@ -103,12 +103,6 @@ cbar = fig.colorbar(pcm, ax=ax, shrink=0.4)
 cbar.ax.set_ylabel("Abundance")
 ax[2].axvline(event_time, linestyle = '--', color = 'white')
 ----------------------------------------------------------
-# Plot Number 4 - O7+/O6+ Ratio 
-ax[3].plot(time, cdf_file.varget("O7_O6_RATIO"))
-ax[3].set_yscale("log")
-ax[3].set_ylabel(r"$O^{7+} / O^{6+}$")
-ax[3].axvline(event_time, linestyle = '--', color = 'red')
-
 plt.savefig("HIS_time_analysis_{0}.png".format(date))
 
 #Steps are repeated for 6th of September with input file and event time variable being changed to " datetime.datetime(2022, 9, 6, 10, 00) " and " datetime.datetime(2022, 9, 6, 15, 00) "
