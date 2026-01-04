@@ -5,10 +5,108 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.ticker import MaxNLocator
 import datetime
-
-#edit date - using 20220905, ...06 and ...07 for the 3 days
+----------------------------------------------------------
+#Edit date - using 20220905, ...06 and ...07 for the 3 days
 date = '20220905'
 #individual downloaded files from the solar orbiter archive are put in below
 cdf_file = cdflib.CDF([file location]\\solo_L3_swa-his-comp-10min_20220905_V03.cdf')
+----------------------------------------------------------
+#Load in data
+info = cdf_file.cdf_info()
+for attr in dir(info):
+    if not attr.startswith("_"):
+        value = getattr(info, attr)
+        print(f"{attr}: {value}\n")
+#This aids in knowing what variables exist
+----------------------------------------------------------
+# Produce an array of datetime values from the Epoch variable. Convert nanoseconds to microseconds and add to start date January 01, 2000.
+start_date = datetime.datetime(2000, 1, 1, 12)
+time = [
+    start_date + datetime.timedelta(microseconds=time / 1e3)
+    for time in cdf_file.varget("EPOCH")
+]
+# Create plotting figure and axes
+fig, ax = plt.subplots(
+    4, 1, figsize=(16, 12), sharex=True, constrained_layout=True
+)
+fig.suptitle(
+    "HIS Time Analysis Dashboard", color="red", size="x-large", weight="bold"
+)
+----------------------------------------------------------
+# Plot charge states as heatmaps with average charge state distributions for oxygen, carbon and iron
+num_start, num_stop = mdates.date2num(time[0]), mdates.date2num(time[-1])
+num_step = (num_stop - num_start) / len(time)
+x = np.arange(num_start, num_stop, num_step)
+o_y, c_y, fe_y = np.arange(5,9,1), np.arange(4, 7, 1), np.arange(8, 13, 1)
+----------------------------------------------------------
+# Select event time for each day. In report, it is noted that three major event times of interest are 16.30 on the 5th of Sept. 2022 (CME Eruption),
+# 10.00 on the 6th of Sept. 2022 (SolO interception of CME's path), and 15.00 on the 6th as well (assuming SolO leaves CME's path). The 7th of Sept. 2022
+# helps in understanding CME aftermath
+event_time = datetime.datetime(2022, 9, 5, 16, 30)
+----------------------------------------------------------
+# Plot Number 1 - Oxygen Distribution
+ax[0].pcolormesh(
+    *np.meshgrid(x, o_y),
+    np.transpose(cdf_file.varget("O_CHARGE_DIST")),
+    cmap="viridis",
+    vmin=0., vmax=1.
+)
+ax[0].set_ylabel(r"$Q_{O}$")
+ax[0].axvline(event_time, linestyle = '--', color = 'white')
 
+ax0 = ax[0].twinx()
+ax0.plot(time, cdf_file.varget("O_AVE_CHARGE"), linestyle="--", color="red")
+ax0.set_ylabel(r"$\langle O_C \rangle$", color="red")
+ax0.set_ylim(4.5, 8.5)
+ax0.tick_params(axis="y", colors="red")
+ax0.yaxis.set_major_locator(MaxNLocator(integer=True))
+----------------------------------------------------------
+# Plot Number 2 - Carbon Distribution
+pcm = ax[1].pcolormesh(
+    *np.meshgrid(x, c_y),
+    np.transpose(cdf_file.varget("C_CHARGE_DIST")),
+    cmap="viridis",
+    vmin=0., vmax=1.
+)
+ax[1].set_ylabel(r"$Q_{C}$")
+ax[1].yaxis.set_major_locator(MaxNLocator(integer=True))
+ax[1].axvline(event_time, linestyle = '--', color = 'white')
 
+ax1 = ax[1].twinx()
+ax1.plot(time, cdf_file.varget("C_AVE_CHARGE"), linestyle="--", color="red")
+ax1.set_ylabel(r"$\langle Q_C \rangle$", color="red")
+ax1.set_ylim(3.5, 6.5)
+ax1.tick_params(axis="y", colors="red")
+ax1.yaxis.set_major_locator(MaxNLocator(integer=True))
+----------------------------------------------------------
+# Plot Number 3 - Iron Distribution
+fe_dist_data = np.delete(
+    cdf_file.varget("FE_CHARGE_DIST"),
+    [0, 1, 7, 8, 9, 10, 11, 12, 13, 14],
+    axis=1,
+)
+ax[2].pcolormesh(
+    *np.meshgrid(x, fe_y),
+    np.transpose(fe_dist_data), 
+    cmap="viridis",
+    vmin=0., vmax=1.
+)
+ax[2].set_ylabel(r"$Q_{Fe}$")
+ax2 = ax[2].twinx()
+ax2.plot(time, cdf_file.varget("FE_AVE_CHARGE"), linestyle="--", color="red")
+ax2.set_ylabel(r"$\langle Q_Fe \rangle$", color="red")
+ax2.set_ylim(0, 16)
+ax2.tick_params(axis="y", colors="red")
+ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+cbar = fig.colorbar(pcm, ax=ax, shrink=0.4)
+cbar.ax.set_ylabel("Abundance")
+ax[2].axvline(event_time, linestyle = '--', color = 'white')
+----------------------------------------------------------
+# Plot Number 4 - O7+/O6+ Ratio 
+ax[3].plot(time, cdf_file.varget("O7_O6_RATIO"))
+ax[3].set_yscale("log")
+ax[3].set_ylabel(r"$O^{7+} / O^{6+}$")
+ax[3].axvline(event_time, linestyle = '--', color = 'red')
+
+#Steps are repeated for 6th of September with input file and event time variable being changed to " datetime.datetime(2022, 9, 6, 10, 00) " and " datetime.datetime(2022, 9, 6, 15, 00) "
