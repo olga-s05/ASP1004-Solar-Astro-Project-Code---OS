@@ -1,0 +1,172 @@
+# importing bits
+from sunpy.net import Fido, attrs as a
+from sunpy.timeseries import GenericTimeSeries
+import sunpy_soar
+import numpy as np
+import matplotlib.pyplot as plt
+import analysis_helpers as h
+import datetime
+import cdflib
+import pandas as pd
+import astrospice
+from sunpy.coordinates import HeliographicCarrington
+import astropy.units as u
+#-----------------------------
+instrument = a.Instrument('MAG')
+time = a.Time('2022-09-05', '2022-09-07') #3 days, but can also just put e.g '2022-09-05' if you'd like to look at 24h worth of data
+level = a.Level(2) #hence it is L2 data
+product = a.soar.Product('MAG-RTN-NORMAL-1-MINUTE')
+result = Fido.search(time & level & product) # so no need to manually download anything
+files = Fido.fetch(result)
+#-----------------------------
+# just to check everything is working
+data = pd.DataFrame()
+for file in files:
+    temp_df = h.cdf2df(file)
+    data = pd.concat([data, temp_df])
+    data.sort_index(inplace=True)
+print(data.columns)
+#-----------------------------
+# copied from notebook !!
+#get the SPICE kernels
+solo_kernels = astrospice.registry.get_kernels('solar orbiter', 'predict')
+solo_kernel = solo_kernels[0]
+solo_coverage = solo_kernel.coverage('SOLAR ORBITER')
+print("SPICE kernels cover this time period: ", solo_coverage.iso)
+
+# use every 30 mins for trajectory, then interpolate
+times = data.index[::30]
+
+#get the coordinates
+coords = astrospice.generate_coords('SOLAR ORBITER', times)
+carr_frame = HeliographicCarrington(observer="self")
+carr_coords = coords.transform_to(carr_frame)
+
+# have to make sure there is no wrapping in angles before I interpolate
+lons = carr_coords.lon.to(u.degree).value
+# find the break point
+
+# keeps unwrapping until a longitude is a straight line, not wrapped around 360
+while np.any(np.diff(lons) > 10):
+    lons = h.unwrap_lons(lons)
+
+# make a orbit dataframe that I can then interpolate and incorporate into data
+orbit_df = pd.DataFrame(
+    {
+        "Radius": carr_coords.radius.to(u.au).value,
+        "Carr_lon": lons,
+        "Carr_lat": carr_coords.lat.to(u.degree).value,
+    },
+    index=times,
+)
+
+# drop columns if they already exist
+if "Radius" in data.keys():
+    data.drop(
+        columns=["Radius", "Carr_lon", "Carr_lat"], inplace=True
+    )
+    
+#re-index to data
+orbit_df = orbit_df.reindex(data.index)
+# add the orbit variables in
+for key in orbit_df.keys():
+    data[key] = orbit_df[key]
+
+print(data['V'])
+#interpolate to fill in the NaNs
+# I don't want to interpolate the gaps in magnetic field
+data[['Radius', 'Carr_lon', 'Carr_lat']] = data[['Radius', 'Carr_lon', 'Carr_lat']].interpolate(method="time")
+
+data['V'] = 350
+tolerance = 45
+data = h.add_polarity2df(data, ds_period = '12H',tolerance=tolerance)
+
+#angle of magnetic field in R-T plane
+mag_angle = np.arctan2(data['BT'],data['BR']) *180/np.pi
+# make the angles go from 0 -> 360
+mag_angle[mag_angle<0] += 360
+data['mag_angle'] = mag_angle
+data['PS_angle'] = h.PS_angle(data['Radius'].values*u.au, data['V'].values*u.km/u.s)
+#-----------------------------
+# plots !!
+fig, axs = plt.subplots(4, sharex = True, figsize = (10,10))
+# analysis
+print(min(data['BR']))
+# magnetic field magnitude and its rotational component plot
+axs[0].plot(data['|B|'], color = 'black', label = '|B|')
+axs[0].plot(data['BR'], color = 'red', label = 'BR')
+axs[0].legend(loc = 'upper left')
+# magnetic field and its normal + tangential components plot
+axs[1].plot(data['BT'], color = 'orange', label = 'BT')
+axs[1].plot(data['BN'], color = 'green', label = 'BN')
+axs[1].legend(loc = 'upper left')
+# labels and visuals
+axs[0].set_ylabel('|B|, BR (nT)')
+axs[1].set_ylabel('BT, BN (nT)')
+for ax in axs[:2]:
+    ax.axhline(0, color = 'black', lw = 1, ls = 'dotted')
+# magnetic field angle plot
+axs[2].scatter(data.index, data['mag_angle'], color = 'black', s = 1)
+axs[2].fill_between(data.index, data['PS_angle'] +tolerance, data['PS_angle'] -tolerance, color = 'red', alpha = 0.2)
+axs[2].fill_between(data.index, data['PS_angle'] -180 +tolerance, data['PS_angle'] -180 -tolerance, color = 'blue', alpha = 0.2)
+axs[2].set_ylabel('Mag. angle ($^{\circ}$)')
+
+# polarity plot
+axs[3].plot(data['polarity'], color = 'green')
+axs[3].set_ylabel('Polarity')
+
+# bits below this line are used for analysis and to verify event times (commented out)
+
+#event_time1 = datetime.datetime(2022, 9, 6, 15, 30)
+#event_time2 = datetime.datetime(2022, 9, 6, 4, 00)
+#event_time3 = datetime.datetime(2022, 9, 6, 18, 00)
+#event_time4 = datetime.datetime(2022, 9, 7, 6, 00)
+#axs[0].axvline(event_time1, linestyle = '--', color = 'green')
+#axs[0].axvline(event_time2, linestyle = '--', color = 'blue')
+#axs[0].axvline(event_time3, linestyle = '--', color = 'blue')
+#axs[0].axvline(event_time4, linestyle = '--', color = 'blue')
+#axs[1].axvline(event_time1, linestyle = '--', color = 'red')
+#axs[1].axvline(event_time2, linestyle = '--', color = 'red')
+#axs[1].axvline(event_time3, linestyle = '--', color = 'red')
+#axs[2].axvline(event_time1, linestyle = '--', color = 'red')
+#axs[2].axvline(event_time2, linestyle = '--', color = 'red')
+#axs[2].axvline(event_time3, linestyle = '--', color = 'red')
+#axs[3].axvline(event_time1, linestyle = '--', color = 'red')
+#axs[3].axvline(event_time2, linestyle = '--', color = 'red')
+#axs[3].axvline(event_time3, linestyle = '--', color = 'red')
+#axs[3].axvline(event_time4, linestyle = '--', color = 'red')
+#-----------------------------
+# carrington map plot / most of code is copied from OG notebook
+fig = plt.figure(figsize = (15,12))
+gs = fig.add_gridspec(5, 1)
+ax_polar = fig.add_subplot(gs[:-1, 0], projection = 'polar')
+cax = fig.add_subplot(gs[-1, 0])
+data[['polarity']] = data[['polarity']].fillna(0)
+cmap = None
+solo_c = data["polarity"].values.astype('object')
+solo_c[solo_c==1] = '#FC6255'
+solo_c[solo_c==-1] = '#58C4DD'
+solo_c[solo_c==0] = '#888888'
+
+# Carrington Frame
+cb = ax_polar.scatter(data["Carr_lon"] * np.pi/180, data['Radius'], c = solo_c)
+
+ax_polar.set_ylim(0, 1.1)
+ax_polar.set_title("Carrington Frame")
+#add parker spirals every 6 hours
+slice_every = 6 * 60 
+for lon, radius, color in zip(data['Carr_lon'].values[::slice_every], data['Radius'].values[::slice_every], solo_c[::slice_every]):
+    # make some radii to draw spiral with
+    r = np.linspace(0,radius, 100)
+    # work out a shift in longitude for each r
+    omega = (14.713 * np.pi / 180.0) / (24 * 3600)
+    spiral_lon = lon*np.pi/180 + ((radius - r)*1.5e8 * omega / (400))
+    ax_polar.plot(spiral_lon, r, color = color, lw = 2)
+
+from matplotlib.lines import Line2D
+custom_lines = [Line2D([0], [0], color='#58C4DD', lw=4, label = 'Towards'),
+            Line2D([0], [0], color='#888888', lw=4, label = 'Mixed'),
+            Line2D([0], [0], color='#FC6255', lw=4, label = 'Away')]
+cax.legend(handles=custom_lines, ncol=3)
+cax.axis('off')
+# le fin
